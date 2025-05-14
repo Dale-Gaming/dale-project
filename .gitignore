@@ -56,5 +56,5 @@ nunit-*.xml
 /.vs/slnx.sqlite
 /DaleProject/.vs/DaleProject
 /.vs/dale-project/v17/.wsuo
-*.json
 /.vs/VSWorkspaceState.json
+/.vs
