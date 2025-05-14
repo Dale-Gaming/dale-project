@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Domain.Interfaces.Services;
+using Domain.Services;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Rewrite;
 using Microsoft.OpenApi.Models;
 using Newtonsoft.Json;
@@ -29,7 +31,8 @@ namespace WebApi
 
             //Applications Injections
 
-
+            //Services
+            services.AddSingleton<ILoginService, LoginService>();
 
             //End Application Injections
 
