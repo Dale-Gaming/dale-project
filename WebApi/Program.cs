@@ -1,27 +1,12 @@
-using Serilog;
-using System.Reflection;
+using WebApi;
 
-namespace WebApi
-{
-    public class Program
-    {
-        public static void Main(string[] args)
-        {
-            var host = CreateHostBuilder(args).Build();
+var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile("appsettings.json");
 
-            host.WaitForShutdownAsync();
+var startup = new Startup(builder.Configuration, builder.Environment);
+startup.ConfigureServices(builder.Services);
 
-            host.Run();
-        }
+var app = builder.Build();
 
-        public static IHostBuilder CreateHostBuilder(string[] args) =>
-                Host.CreateDefaultBuilder(args).ConfigureAppConfiguration(del =>
-                {
-                    del.AddJsonFile($"{Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location)}/appsettings.local.json", false, true);
-                }).UseSerilog()
-                    .ConfigureWebHostDefaults(webBuilder =>
-                    {
-                        webBuilder.UseStartup<Startup>();
-                    });
-    }
-}
+startup.Configure(app, app.Environment);
+app.Run();

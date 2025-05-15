@@ -1,106 +1,96 @@
-﻿using Domain.Interfaces.Services;
-using Domain.Services;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Rewrite;
-using Microsoft.OpenApi.Models;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json.Serialization;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using WebApi.Middlewares;
 
 namespace WebApi
 {
     public class Startup
     {
-        public Startup(IConfiguration configuration)
+        public Startup(IConfiguration configuration, IHostEnvironment environment)
         {
             Configuration = configuration;
+            HostingEnvironment = environment;
         }
 
         public IConfiguration Configuration { get; }
+        public IHostEnvironment HostingEnvironment { get; set; }
 
         public void ConfigureServices(IServiceCollection services) 
         {
-            #region "Pre-Configuration"
-            services.AddMvcCore( opt =>
+            services.AddControllers().AddJsonOptions(options =>
             {
-                opt.EnableEndpointRouting = false;
+                options.JsonSerializerOptions.PropertyNamingPolicy = null;
             });
-            services.AddDistributedMemoryCache();
-            services.AddHttpContextAccessor();
-            #endregion
 
-            //Applications Injections
+            var key = Encoding.ASCII.GetBytes(Configuration.GetSection("SecretToken").Value ?? "");
+            services.AddRepository();
 
-            //Services
-            services.AddSingleton<ILoginService, LoginService>();
+            services
+                .AddServices(Configuration)
+                .AddSwaggerConfig("Dale.Api", "V1");
 
-            //End Application Injections
+            services.TryAddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+            services.AddCors();
 
-            #region "Pos-Configuration"
-            services.AddMvc().ConfigureApiBehaviorOptions(opt =>
+            services.AddControllersWithViews()
+                .AddNewtonsoftJson(options =>
+                    options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore
+                );
+
+            services.AddAuthentication(x =>
             {
-                opt.InvalidModelStateResponseFactory = (context => new BadRequestObjectResult("Invalid call!"));
-            });
-            services.AddControllers().AddNewtonsoftJson(options =>
+                x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            })
+            .AddJwtBearer(x =>
             {
-                options.SerializerSettings.Converters.Add(new StringEnumConverter());
-                options.SerializerSettings.ContractResolver = new DefaultContractResolver();
-                options.SerializerSettings.NullValueHandling = NullValueHandling.Ignore;
-                options.SerializerSettings.DefaultValueHandling = DefaultValueHandling.Populate;
-                options.SerializerSettings.MissingMemberHandling = MissingMemberHandling.Ignore;
-                options.SerializerSettings.ReferenceLoopHandling = ReferenceLoopHandling.Ignore;
-            });
-            services.AddCors(o =>
-            {
-                o.AddPolicy("LocalCorsPolicy", builder =>
+                x.RequireHttpsMetadata = false;
+                x.SaveToken = true;
+                x.TokenValidationParameters = new TokenValidationParameters
                 {
-                    builder.AllowAnyMethod()
-                        .AllowAnyHeader()
-                        .AllowCredentials()
-                        .AllowAnyMethod();
-                });
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(key),
+                    ValidateIssuer = false,
+                    ValidateAudience = false
+                };
             });
-            services.AddSwaggerGen(c =>
-            {
-                c.SwaggerDoc("v1", new OpenApiInfo { Title = "Dale API", Version = "v0"});
-            });
-            #endregion
-
-            ConfigureCors(services);
         }
 
-        public void Configure(IApplicationBuilder app, Microsoft.AspNetCore.Hosting.IHostingEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
-            app.UseCors("LocalCorsPolicy");
+            app.UseMiddleware<TokenMiddleware>();
 
-            app.UseMvc();
-            app.UseSwagger();
-            app.UseSwaggerUI(c => { c.SwaggerEndpoint("v1/swagger.json", "API"); });
-            app.UseRewriter(new RewriteOptions().AddRedirect("^", "/swagger"));
-        }
+            app.UseCors(x => x
+                .AllowAnyOrigin()
+                .AllowAnyMethod()
+                .AllowAnyHeader());
 
-        private static void ConfigureCors(IServiceCollection services)
-        {
-            services.AddCors( o =>
+            app.UseRouting();
+            app.UseSwagger(c =>
             {
-                o.AddPolicy("CorsPolicy", builder =>
-                {
-                    builder.AllowAnyMethod()
-                        .AllowAnyMethod()
-                        .AllowCredentials()
-                        .AllowAnyHeader();
-                });
-                o.AddPolicy("LocalCorsPolicy", builder =>
-                {
-                    builder.AllowAnyMethod()
-                        .AllowAnyMethod()
-                        .AllowCredentials()
-                        .AllowAnyHeader();
-                });
+                c.SerializeAsV2 = true;
+            });
+
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "Patrymon.Api v1");
+            });
+
+            app.UseRewriter(new RewriteOptions().AddRedirect("^", "/swagger"));
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapControllers();
             });
         }
     }
